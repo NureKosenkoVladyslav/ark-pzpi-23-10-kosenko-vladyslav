@@ -29,5 +29,22 @@ main()
 # Код важко читати й підтримувати.
 # Немає типізації аргументів.
 
+#Приклад документування програмного коду
+def calculate_monthly_payment(principal: float, annual_rate: float,
+months: int) -> float:
+"""
+Обчислює щомісячний платіж за кредитом.
 
+Parameters:
+principal (float): сума позики.
+annual_rate (float): річна процентна ставка.
+
+months (int): кількість місяців виплат.
+
+Returns:
+float: сума щомісячного платежу.
+"""
+monthly_rate = annual_rate / 12 / 100
+payment = principal * (monthly_rate * (1 + monthly_rate) ** months) / ((1 + monthly_rate) ** months - 1)
+return round(payment, 2)
 
