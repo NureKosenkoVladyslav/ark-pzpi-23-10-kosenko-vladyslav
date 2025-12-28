@@ -1,0 +1,6 @@
+@MelodyTrack.API_HostAddress = http://localhost:5267
+
+GET {{MelodyTrack.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
