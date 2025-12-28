@@ -1,0 +1,135 @@
+МІНІСТЕРСТВО ОСВІТИ І НАУКИ УКРАЇНИ
+
+ХАРКІВСЬКИЙ НАЦІОНАЛЬНИЙ
+УНІВЕРСИТЕТ РАДІОЕЛЕКТРОНІКИ
+
+Кафедра «Програмна інженерія»
+
+
+
+
+
+
+ЗВІТ
+Дисципліна «Аналіз та рефакторинг коду»
+Лабораторна робота №3
+«РОЗРОБКА БІЗНЕС-ЛОГІКИ ТА ФУНКЦІЙ АДМІНІСТРУВАННЯ СЕРВЕРНОЇ ЧАСТИНИ ПРОГРАМНОЇ СИСТЕМИ»
+
+
+
+
+
+
+Виконав:                                                                                         Прийняв:
+ст. гр. ПЗПІ-23-10                                                                        Дашенков Д.С.
+Косенко В.В.
+
+
+
+Харків 2025
+Мета роботи: розробити бізнес-логику та функції адміністрування серверної частини  програмної системи 
+
+Тема роботи: Програмна система для автоматизації діяльності музичної школи «MelodyTrack»
+Посилання на репозиторій: https://github.com/NureKosenkoVladyslav/ark-pzpi-23-10-kosenko-vladyslav
+
+Хід роботи
+
+1. Текстовий опис інженерних рішень
+Для реалізації серверної частини системи було обрано фреймворк ASP.NET Core Web API, оскільки він забезпечує високу продуктивність та зручну інтеграцію з базами даних.
+Ключові інженерні рішення:
+1.	Архітектура: Використано багаторівневу архітектуру, де контролери обробляють HTTP-запити, а моделі описують структуру даних.
+2.	Доступ до даних (ORM): Використано Entity Framework Core. Для забезпечення цілісності даних назви таблиць у коді синхронізовано з фізичною базою даних за допомогою атрибута [Table].
+3.	Бізнес-логіка (Service Layer): Обчислювальні методи (середній бал, відсоток прогресу) винесено в окремі методи контролерів. Це дозволяє серверу не просто віддавати сирі дані, а проводити їх аналітичну обробку перед відправкою клієнту.
+4.	Маршрутизація: Для уникнення конфліктів ("Ambiguous match") використано чітку структуру маршрутів з префіксами (наприклад, api/Grades/average/{id}), що дозволяє масштабувати систему.
+
+2. Фрагменти програмного коду: Бізнес-логіка
+Нижче наведено повний перелік розроблених методів математичної обробки даних для кожної таблиці системи.
+
+2.1. Контролер оцінок (GradesController)
+Логіка: Розрахунок середнього балу та рейтинг найкращих учнів.
+// 1. Середній бал конкретного учня
+[HttpGet("average/{studentId}")]
+public async Task<ActionResult<double>> GetAverageGrade(int studentId)
+{
+    var grades = await _context.Grades.Where(g => g.StudentID == studentId).ToListAsync();
+    if (grades.Count == 0) return Ok(0);
+    
+    double average = grades.Average(g => (double)g.Value);
+    return Ok(Math.Round(average, 2));
+}
+
+// 2. Рейтинг ТОП-5 учнів за успішністю
+[HttpGet("top-students")]
+public async Task<ActionResult> GetTopStudents()
+{
+    var top = await _context.Grades
+        .GroupBy(g => g.StudentID)
+        .Select(group => new {
+            StudentId = group.Key,
+            AverageValue = group.Average(g => (double)g.Value)
+        })
+        .OrderByDescending(x => x.AverageValue).Take(5).ToListAsync();
+    return Ok(top);
+}
+2.2. Контролер репертуару (RepertoireController)
+Логіка: Аналіз готовності музичної програми учня.
+C#
+[HttpGet("progress/{studentId}")]
+public async Task<ActionResult> GetRepertoireProgress(int studentId)
+{
+    var repertoire = await _context.Repertoires.Where(r => r.StudentID == studentId).ToListAsync();
+    if (repertoire.Count == 0) return Ok(new { message = "План порожній", progress = "0%" });
+
+    int total = repertoire.Count;
+    int completed = repertoire.Count(r => r.Status == "Вивчено" || r.Status == "Ready");
+    double percent = (double)completed / total * 100;
+
+    return Ok(new { Total = total, Completed = completed, Progress = Math.Round(percent, 1) + "%" });
+}
+2.3. Контролер подій та предметів (Events & Subjects)
+Логіка: Динамічна афіша та статистика популярності дисциплін.
+// EventsController: Тільки майбутні заходи
+[HttpGet("upcoming")]
+public async Task<ActionResult<IEnumerable<Event>>> GetUpcomingEvents()
+{
+    return await _context.Events.Where(e => e.EventDate >= DateTime.Now).OrderBy(e => e.EventDate).ToListAsync();
+}
+
+// SubjectsController: Кількість виставлених оцінок по кожному предмету
+[HttpGet("stats")]
+public async Task<ActionResult> GetSubjectStats()
+{
+    var stats = await _context.Subjects
+        .Select(s => new {
+            Subject = s.SubjectName,
+            TotalGrades = _context.Grades.Count(g => g.SubjectID == s.SubjectID)
+        }).ToListAsync();
+    return Ok(stats);
+}
+
+3. Фрагменти програмного коду: Адміністрування
+Функції адміністрування дозволяють контролювати стан бази даних та керувати обліковими записами.
+Файл: UsersController.cs
+// Отримання списку всіх користувачів (моніторинг персоналу)
+[HttpGet]
+public async Task<ActionResult<IEnumerable<User>>> GetUsers() => await _context.Users.ToListAsync();
+
+// Видалення користувача (адміністрування випускників/звільнень)
+[HttpDelete("{id}")]
+public async Task<IActionResult> DeleteUser(int id)
+{
+    var user = await _context.Users.FindAsync(id);
+    if (user == null) return NotFound();
+
+    _context.Users.Remove(user);
+    await _context.SaveChangesAsync();
+    return Ok(new { message = "Користувача видалено адміністратором" });
+}
+
+ 
+Рис. 1 – UML діаграма діяльності для серверної частини
+
+ 
+Рис. 2 - UML діаграма взаємодії
+
+
